@@ -42,7 +42,7 @@ def build_main():
     executable_name = "pong"
 
     win32_source_files = ["win32/win32_main.c"]
-    win32_libraries = ["-lkernel32", "-luser32", "-lwinmm", "-lgdi32"]
+    win32_libraries = ["-lkernel32", "-luser32", "-lwinmm", "-lgdi32", "-lole32"]
 
     linux_source_files = []
     linux_libraries = []
@@ -50,16 +50,10 @@ def build_main():
     macos_source_files = []
     macos_libraries = []
 
-    warnings_to_disable = ["-Wno-reserved-macro-identifier",
-                           "-Wno-declaration-after-statement",
-                           "-Wno-reserved-identifier",
-                           "-Wno-undef",
-                           "-Wno-double-promotion"]
+    warnings_to_enable = ["-Wconversion", "-Wcast-align"]
 
-    errors_to_disable = ["-Wno-error=unused-parameter",
-                         "-Wno-error=unused-variable",
-                         "-Wno-error=unused-function",
-                         "-Wno-error=unused-but-set-variable"]
+    errors_to_disable = ["-Wno-error=unused-function",
+                         "-Wno-error=unused-variable"]
 
     compile_command = ["clang",
                        "-std=c99",
@@ -68,8 +62,9 @@ def build_main():
                        "-nostdlib",
                        "-mno-stack-arg-probe",
                       f"-D PROGRAM_NAME=\"{program_name}\"",
-                       "-Weverything",
-                       "-Werror"] + warnings_to_disable + errors_to_disable
+                       "-Wall",
+                       "-Wextra",
+                       "-Werror"] + warnings_to_enable + errors_to_disable
 
     development_flags = ["-D ASSERTIONS_ON", "-D DEVELOPMENT", "-g"]
     release_flags = ["-D OPTIMIZATIONS_ON", "-O3"]

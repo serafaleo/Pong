@@ -1,10 +1,17 @@
 #ifndef __clang__
+// NOTE(leo): We are using some Clang-only stuff like __uint128, so it's better off not to
+// bother with trying to make it compile in another compiler like MSVC's.
     #error This code should only be compiled with Clang.
 #endif // __clang__
 
 #ifndef __x86_64__
+// NOTE(leo): Since we are not linking with the Windows CRT (C Runtime Library), there's a lot
+// to implement if we wish to be able to compile for 32-bit. Again, it's better off not to
+// bother.
     #error This code should only be compiled for x64.
 #endif // __x86_64__
+
+// ===========================================================================================
 
 // NOTE(leo): Forward declaring the replaced CRT functions.
 void *memset(void *dest_buffer, int value_to_set_per_byte, size_t num_of_bytes_to_set);
@@ -12,12 +19,11 @@ void *memcpy(void *dest_buffer, void const *src_buffer, size_t num_of_bytes_to_c
 
 #include "../game_main.c"
 
+// ===========================================================================================
+
 // NOTE(leo): Setting the minimum supported Windows version to 7.
 #define WINVER       0x0601
 #define _WIN32_WINNT WINVER
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-macros"
 
 #define NOGDICAPMASKS    // CC_ *, LC_ *, PC_ *, CP_ *, TC_ *, RC_
 // #define NOVIRTUALKEYCODES // VK_ *
@@ -63,13 +69,58 @@ void *memcpy(void *dest_buffer, void const *src_buffer, size_t num_of_bytes_to_c
 #define STRICT
 
 #include <Windows.h>
+
 #define COM_NO_WINDOWS_H
+#define COBJMACROS
 
 #include <timeapi.h>
+#include <objbase.h>
+#include <mmdeviceapi.h>
+#include <Audioclient.h>
 
-#pragma clang diagnostic pop
+// ===========================================================================================
 
-// NOTE(leo): Include win32_ files here.
+// NOTE(leo): Since it seams that initguid.h is broken for WASAPI, we have to look into the
+// header files to get the GUIDs manually and be able to use the library in plain C.
+
+// NOTE(leo): The following GUIDs were gotten from mmdeviceapi.h or Audioclient.h
+
+// BCDE0395-E52F-467C-8E3D-C4579291692E
+INTERNAL const CLSID CLSID_MMDeviceEnumerator = {
+    0xBCDE0395,
+    0xE52F,
+    0x467C,
+    {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}
+};
+
+// A95664D2-9614-4F35-A746-DE8DB63617E6
+INTERNAL const IID IID_IMMDeviceEnumerator = {
+    0xA95664D2,
+    0x9614,
+    0x4F35,
+    {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}
+};
+
+// 1CB9AD4C-DBFA-4C32-B178-C2F568A703B2
+INTERNAL const IID IID_IAudioClient = {
+    0x1CB9AD4C,
+    0xDBFA,
+    0x4C32,
+    {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}
+};
+
+INTERNAL const IID KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = {
+    0x00000003,
+    0x0000,
+    0x0010,
+    {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}
+};
+
+// ===========================================================================================
+
+#ifdef DEVELOPMENT
+    #include "win32_os.c"
+#endif // DEVELOPMENT
 
 GLOBAL f32 g_cpu_ticks_per_second;
 
@@ -90,7 +141,9 @@ GLOBAL struct
 
 } g_win32 = {0};
 
-INTERNAL __attribute__((noreturn)) void
+// ===========================================================================================
+
+INTERNAL void
 win32_exit(UINT exit_code)
 {
     // NOTE(leo): There is no need to call timeEndPeriod since the OS will automatically
@@ -99,7 +152,7 @@ win32_exit(UINT exit_code)
     ExitProcess(exit_code);
 }
 
-INTERNAL __attribute__((noreturn)) void
+INTERNAL void
 win32_error(void)
 {
     win32_exit(1);
@@ -215,6 +268,7 @@ win32_window_callback(HWND window_handle, UINT message, WPARAM w_param, LPARAM l
         case WM_DESTROY:
         {
             win32_exit(0);
+            break;
         }
         case WM_GETMINMAXINFO:
         {
@@ -265,6 +319,7 @@ win32_window_callback(HWND window_handle, UINT message, WPARAM w_param, LPARAM l
                 g_win32.last_client_width  = client_width;
                 g_win32.last_client_height = client_height;
             }
+
             break;
         }
 
@@ -308,6 +363,7 @@ win32_window_callback(HWND window_handle, UINT message, WPARAM w_param, LPARAM l
                 win32_exit(0);
             }
 #undef KEY_UP
+
             break;
         }
         case WM_MOUSEMOVE:
@@ -351,12 +407,6 @@ win32_window_callback(HWND window_handle, UINT message, WPARAM w_param, LPARAM l
 INTERNAL void
 win32_create_window(void)
 {
-    if(g_win32.window_dc)
-    {
-        // NOTE(leo): Window already created.
-        return;
-    }
-
     HINSTANCE executable_instance = GetModuleHandleA(NULL);
 
     if(!executable_instance)
@@ -486,45 +536,85 @@ win32_get_seconds_elapsed(s64 init_tick, s64 end_tick)
     return (f32)delta / g_cpu_ticks_per_second;
 }
 
-#ifdef DEVELOPMENT
 INTERNAL void
-win32_print(String8 to_print)
+win32_init_sound_system(void)
 {
-    HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-
-    if(stdout_handle)
+    HRESULT result;
+    if(FAILED(result = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY)))
     {
-        DWORD written;
-        ASSERT_FUNCTION(
-            WriteConsoleA(stdout_handle, to_print.data, to_print.length, &written, NULL));
-        ASSERT(written == to_print.length);
+        win32_error();
     }
 
-    OutputDebugStringA(to_print.data);
+    IMMDeviceEnumerator *device_enumerator;
+    if(FAILED(result = CoCreateInstance(&CLSID_MMDeviceEnumerator,
+                                        NULL,
+                                        CLSCTX_ALL,
+                                        &IID_IMMDeviceEnumerator,
+                                        (void **)&device_enumerator)))
+    {
+        win32_error();
+    }
+
+    IMMDevice *default_output_endpoint;
+    result = IMMDeviceEnumerator_GetDefaultAudioEndpoint(device_enumerator,
+                                                         eRender,
+                                                         eConsole,
+                                                         &default_output_endpoint);
+    IMMDeviceEnumerator_Release(device_enumerator);
+
+    if(FAILED(result))
+    {
+        win32_error();
+    }
+
+    IAudioClient *client;
+    result = IMMDevice_Activate(default_output_endpoint,
+                                &IID_IAudioClient,
+                                CLSCTX_ALL,
+                                NULL,
+                                (void **)&client);
+
+    IMMDevice_Release(default_output_endpoint);
+
+    if(FAILED(result))
+    {
+        win32_error();
+    }
+
+    WAVEFORMATEXTENSIBLE shared_mode_format;
+    shared_mode_format.Format.wFormatTag     = WAVE_FORMAT_EXTENSIBLE;
+    shared_mode_format.Format.nChannels      = 2;
+    shared_mode_format.Format.nSamplesPerSec = 48000;
+    shared_mode_format.Format.wBitsPerSample = 8 * sizeof(f32);
+
+    shared_mode_format.Format.nBlockAlign =
+        (shared_mode_format.Format.nChannels * shared_mode_format.Format.wBitsPerSample) / 8;
+
+    shared_mode_format.Format.nAvgBytesPerSec =
+        shared_mode_format.Format.nSamplesPerSec * shared_mode_format.Format.nBlockAlign;
+
+    shared_mode_format.Format.cbSize =
+        sizeof(shared_mode_format) - sizeof(shared_mode_format.Format);
+
+    shared_mode_format.Samples.wValidBitsPerSample = shared_mode_format.Format.wBitsPerSample;
+    shared_mode_format.dwChannelMask               = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+    shared_mode_format.SubFormat                   = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+
+    WAVEFORMATEX *closest_match;
+    result = IAudioClient_IsFormatSupported(client,
+                                            AUDCLNT_SHAREMODE_SHARED,
+                                            &shared_mode_format.Format,
+                                            &closest_match);
+    if(result != S_OK)
+    {
+        // TODO(leo): The audio engine (for shared mode stream) does not support one or more
+        // of the following format properties: 32-bit floats, 48000 samples per second, 2
+        // channels.
+        win32_error();
+    }
 }
 
-INTERNAL void
-win32_printf(String8 format, ...)
-{
-    va_list arguments;
-    va_start(arguments, format);
-
-    char formated[1024];
-    u32  length = str8_format_va(formated, STATIC_ARRAY_LENGTH(formated), format, arguments);
-
-    va_end(arguments);
-
-    win32_print((String8) {formated, length});
-}
-
-    #define WIN32_PRINTF_LITERAL(literal_format, ...)                                        \
-        win32_printf(STRING8_LITERAL(literal_format), __VA_ARGS__)
-#endif // DEVELOPMENT
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-prototypes"
-
-__attribute__((noreturn)) void
+void
 WinMainCRTStartup(void)
 {
     // NOTE(leo): This is to prevent error mode dialogs from hanging the application.
@@ -540,6 +630,7 @@ WinMainCRTStartup(void)
     g_cpu_ticks_per_second = (f32)li_frequency.QuadPart;
 
     win32_create_window();
+    win32_init_sound_system();
 
     f32 refresh_rate         = win32_get_monitor_refresh_rate(g_win32.window_handle);
     f32 target_frame_seconds = 1.0f / refresh_rate;
@@ -567,31 +658,28 @@ WinMainCRTStartup(void)
             DispatchMessageA(&msg);
         }
 
-#ifdef DEVELOPMENT
-        WIN32_PRINTF_LITERAL("Frame time (ms): %.2f (target: %.2f)\n",
-                             last_frame_time_seconds * 1000.0f,
-                             target_frame_seconds * 1000.0f);
-#endif // DEVELOPMENT
+        OS_PRINTF_LITERAL("Frame time (ms): %.2f (target: %.2f)\n",
+                          last_frame_time_seconds * 1000.0f,
+                          target_frame_seconds * 1000.0f);
 
         game_update_and_render(&game_state, last_frame_time_seconds);
 
         f32 frame_work_seconds =
             win32_get_seconds_elapsed(frame_begin_tick, win32_get_cpu_tick());
 
-        int ms_to_sleep = (int)((target_frame_seconds - frame_work_seconds) * 1000.0f);
+        s32 ms_to_sleep = (s32)((target_frame_seconds - frame_work_seconds) * 1000.0f);
 
-#ifdef DEVELOPMENT
-        WIN32_PRINTF_LITERAL("Frame work (ms): %.2f\n", frame_work_seconds * 1000.0f);
-#endif // DEVELOPMENT
+        OS_PRINTF_LITERAL("Frame work (ms): %.2f\n", frame_work_seconds * 1000.0f);
 
-        int fine_tuning = 1;
+        s32 fine_tuning = 1;
         if(ms_to_sleep > fine_tuning)
         {
-            // NOTE(leo): THIS IS NOT V-SYNC!!! This is only to aproximate the frame duration
-            // to the duration of a v-blank so that we can get a more smooth gameplay by
-            // reducing number of v-blanks missed. We are subtraction 1 because it seams that
-            // this way we can get closer to the actual value of target_frame_seconds. For
-            // that we also have to check whether it is greater than this fine_tuning value.
+            // NOTE(leo): THIS IS NOT V-SYNC!!! This is only to aproximate the frame
+            // duration to the duration of a v-blank so that we can get a more smooth
+            // gameplay by reducing number of v-blanks missed. We are subtraction 1 because
+            // it seams that this way we can get closer to the actual value of
+            // target_frame_seconds. For that we also have to check whether it is greater
+            // than this fine_tuning value.
             Sleep((DWORD)(ms_to_sleep - fine_tuning));
         }
 
@@ -612,17 +700,10 @@ WinMainCRTStartup(void)
     // NOTE(leo): Never gets here.
 }
 
-#pragma clang diagnostic pop
-
 // NOTE(leo): CRT replacement stuff.
 // ===========================================================================================
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-variable-declarations"
-
 int _fltused = 0x9875;
-
-#pragma clang diagnostic pop
 
 void *
 memset(void *dest_buffer, int value_to_set_per_byte, size_t num_of_bytes_to_set)

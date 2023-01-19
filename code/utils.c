@@ -51,8 +51,15 @@ typedef double f64;
 #define GET_BIT(variable, bit_index) (((variable) >> (bit_index)) & 1)
 #define STATIC_ARRAY_LENGTH(array)   (sizeof((array)) / sizeof(*(array)))
 
+// ===========================================================================================
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-function"
+
+// NOTE(leo): The following functions are no inlined because I rather let the compiler decide
+// whether to inline or not. This way I don't need to worry, saves though process and
+// therefore time. Also, in debug builds, I like to step into every function from the
+// debugger, even short ones like these.
 
 INTERNAL u32
 safe_cast_u64_to_u32(u64 to_cast)

@@ -1,5 +1,6 @@
-#define STRING8_LITERAL(literal)                                                             \
-    ((String8) {(char *)literal, STATIC_ARRAY_LENGTH(literal) - 1})
+#define STRING8_LITERAL(literal) ((String8) {literal, STATIC_ARRAY_LENGTH(literal) - 1})
+
+// ===========================================================================================
 
 typedef struct
 {
@@ -7,6 +8,8 @@ typedef struct
     u32   length;
 
 } String8;
+
+// ===========================================================================================
 
 INTERNAL u32
 str8_format_va(char *result, u64 result_capacity, String8 format, va_list variable_arguments)
@@ -77,7 +80,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                 case 'S':
                 {
                     String8 string = *va_arg(variable_arguments, String8 *);
-                    CHECK_BOUNDS(string.length)
+                    CHECK_BOUNDS(string.length);
                     for(u32 char_index = 0; char_index < string.length; ++char_index)
                     {
                         result[chars_written++] = string.data[char_index];
@@ -90,7 +93,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                     char *null_term_string = va_arg(variable_arguments, char *);
                     for(; *null_term_string; ++null_term_string)
                     {
-                        CHECK_BOUNDS(1)
+                        CHECK_BOUNDS(1);
                         result[chars_written++] = *null_term_string;
                     }
 
@@ -103,7 +106,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                     for(; *null_term_wide_string; ++null_term_wide_string)
                     {
                         ASSERT(*((char *)null_term_wide_string + 1) == 0);
-                        CHECK_BOUNDS(1)
+                        CHECK_BOUNDS(1);
                         result[chars_written++] = *((char *)null_term_wide_string);
                     }
 
@@ -161,7 +164,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                         if(signed_value < 0)
                         {
                             signed_value = -signed_value;
-                            CHECK_BOUNDS(1)
+                            CHECK_BOUNDS(1);
                             result[chars_written++] = '-';
                         }
 
@@ -212,14 +215,14 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 
                     if(int_base == 16)
                     {
-                        CHECK_BOUNDS(2)
+                        CHECK_BOUNDS(2);
                         result[chars_written++] = '0';
                         result[chars_written++] = 'x';
                     }
 
                     if(unsigned_value == 0)
                     {
-                        CHECK_BOUNDS(1)
+                        CHECK_BOUNDS(1);
                         result[chars_written++] = '0';
                     }
                     else
@@ -245,7 +248,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                             }
                         }
 
-                        CHECK_BOUNDS(chars_to_write)
+                        CHECK_BOUNDS(chars_to_write);
                         u32 chars_to_write_temp = chars_to_write;
 
                         u32 count = 0;
@@ -293,7 +296,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                 }
                 case '%':
                 {
-                    CHECK_BOUNDS(1)
+                    CHECK_BOUNDS(1);
                     result[chars_written++] = '%';
                     break;
                 }
@@ -328,7 +331,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                     String8 bool_str =
                         bool_value ? STRING8_LITERAL("true") : STRING8_LITERAL("false");
 
-                    CHECK_BOUNDS(bool_str.length)
+                    CHECK_BOUNDS(bool_str.length);
                     for(u32 char_index = 0; char_index < bool_str.length; ++char_index)
                     {
                         result[chars_written++] = bool_str.data[char_index];
@@ -346,7 +349,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
         }
         else
         {
-            CHECK_BOUNDS(1)
+            CHECK_BOUNDS(1);
             result[chars_written++] = *character;
         }
 

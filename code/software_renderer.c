@@ -3,13 +3,15 @@
 
 #define TARGET_ASPECT_RATIO (TARGET_ASPECT_RATIO_NUMERATOR / TARGET_ASPECT_RATIO_DENOMINATOR)
 
+#define COLOR(r, g, b) ((Color) {r, g, b})
+
+// ===========================================================================================
+
 typedef struct
 {
     f32 r, g, b;
 
 } Color;
-
-#define COLOR(r, g, b) ((Color) {r, g, b})
 
 typedef struct
 {
@@ -29,6 +31,8 @@ GLOBAL struct
 
 } g_back_buffer = {0};
 
+// ===========================================================================================
+
 INTERNAL u32
 color_to_u32(Color color)
 {
@@ -37,18 +41,34 @@ color_to_u32(Color color)
     s32 b = round_f32_to_s32_up(color.b * 255.0f);
 
     if(r < 0)
+    {
         r = 0;
+    }
+
     if(g < 0)
+    {
         g = 0;
+    }
+
     if(b < 0)
+    {
         b = 0;
+    }
 
     if(r > 255)
+    {
         r = 255;
+    }
+
     if(g > 255)
+    {
         g = 255;
+    }
+
     if(b > 255)
+    {
         b = 255;
+    }
 
     return (u32)(b | (g << 8) | (r << 16));
 }

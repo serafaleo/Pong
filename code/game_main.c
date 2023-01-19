@@ -2,13 +2,9 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
-// NOTE(leo): We only need strings.c and the Ryu algorithm for the development build since we
-// use it to print debug information.
-
 #ifdef DEVELOPMENT
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wsign-conversion"
-    #pragma clang diagnostic ignored "-Wcomma"
     #include "third_party/ryu/d2fixed.c"
     #pragma clang diagnostic pop
 #endif // DEVELOPMENT
@@ -17,10 +13,13 @@
 
 #ifdef DEVELOPMENT
     #include "strings.c"
+    #include "os.c"
 #endif // DEVELOPMENT
 
 #include "math.c"
 #include "software_renderer.c"
+
+// ===========================================================================================
 
 #define BACKGROUND_COLOR COLOR(0.03f, 0.03f, 0.03f)
 #define ENTITIES_COLOR   COLOR(1.0f, 1.0f, 1.0f)
@@ -51,6 +50,8 @@
 
 #define BALL_AT_TOP    (SCREEN_TOP - HALF_HEIGHT(BALL_SCALE))
 #define BALL_AT_BOTTOM (SCREEN_BOTTOM + HALF_HEIGHT(BALL_SCALE))
+
+// ===========================================================================================
 
 typedef struct
 {
@@ -94,6 +95,8 @@ enum
 
 GLOBAL b32 g_is_key_down[KEYS_COUNT] = {0};
 
+// ===========================================================================================
+
 INTERNAL void
 game_state_init(GameState *game_state)
 {
@@ -115,6 +118,7 @@ INTERNAL void
 render_middle_line(void)
 {
     f32 tick_y_position = MIDDLE_LINE_TICK_AT_TOP;
+
     while(tick_y_position > MIDDLE_LINE_TICK_AT_BOTTOM)
     {
         draw_rectangle(0.0f,
@@ -529,6 +533,7 @@ game_update_and_render(GameState *game_state, f32 last_frame_time_seconds)
     update_and_render_paddles(&game_state->left_paddle,
                               &game_state->right_paddle,
                               last_frame_time_seconds);
+
     update_and_render_ball(game_state, last_frame_time_seconds);
 
     render_scoreboard(game_state);
