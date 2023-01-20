@@ -50,10 +50,12 @@ def build_main():
     macos_source_files = []
     macos_libraries = []
 
-    warnings_to_enable = ["-Wconversion", "-Wcast-align"]
+    warnings_to_enable = ["-Wconversion"]
 
     errors_to_disable = ["-Wno-error=unused-function",
-                         "-Wno-error=unused-variable"]
+                         "-Wno-error=unused-variable",
+                         "-Wno-error=unused-parameter",
+                         "-Wno-error=unused-but-set-variable"]
 
     compile_command = ["clang",
                        "-std=c99",

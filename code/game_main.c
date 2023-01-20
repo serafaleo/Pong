@@ -18,14 +18,15 @@
 
 #include "math.c"
 #include "software_renderer.c"
+#include "sound.c"
 
 // ===========================================================================================
 
 #define BACKGROUND_COLOR COLOR(0.03f, 0.03f, 0.03f)
 #define ENTITIES_COLOR   COLOR(1.0f, 1.0f, 1.0f)
 
-#define PADDLE_WIDTH                 0.025f
-#define PADDLE_HEIGHT                0.15f
+#define PADDLE_WIDTH                 0.015f
+#define PADDLE_HEIGHT                0.09f
 #define PADDLE_SIMETRICAL_X_POSITION 0.9f
 #define LEFT_PADDLE_POSITION_X       (-PADDLE_SIMETRICAL_X_POSITION)
 #define RIGHT_PADDLE_POSITION_X      (PADDLE_SIMETRICAL_X_POSITION)
@@ -93,7 +94,20 @@ enum
     KEYS_COUNT
 };
 
+typedef enum
+{
+    SOUND_POINT,
+    SOUND_WALL,
+    SOUND_PADDLE
+
+} SoundToPlay;
+
+// NOTE(leo): It doesn't matter how we initialize this variable, as long as g_bytes_remaining
+// is zero, no sound will play.
+GLOBAL SoundToPlay g_sound_to_play;
+
 GLOBAL b32 g_is_key_down[KEYS_COUNT] = {0};
+GLOBAL b32 g_collision_detected      = false;
 
 // ===========================================================================================
 
@@ -234,25 +248,39 @@ set_winner(GameState *game_state, Winner winner)
 INTERNAL void
 update_and_render_ball(GameState *game_state, f32 last_frame_time_seconds)
 {
+    g_collision_detected = false;
+
     v2 ball_frame_velocity =
         v2_scalar_multiply(game_state->ball.velocity, last_frame_time_seconds);
     game_state->ball.position = v2_add(game_state->ball.position, ball_frame_velocity);
 
     if(game_state->ball.position.x > SCREEN_RIGHT)
     {
+        g_collision_detected = true;
+        g_sound_to_play      = SOUND_POINT;
+
         set_winner(game_state, WINNER_LEFT);
     }
     else if(game_state->ball.position.x < SCREEN_LEFT)
     {
+        g_collision_detected = true;
+        g_sound_to_play      = SOUND_POINT;
+
         set_winner(game_state, WINNER_RIGHT);
     }
     else if(game_state->ball.position.y >= BALL_AT_TOP)
     {
+        g_collision_detected = true;
+        g_sound_to_play      = SOUND_WALL;
+
         game_state->ball.position.y = BALL_AT_TOP;
         game_state->ball.velocity.y = -game_state->ball.velocity.y;
     }
     else if(game_state->ball.position.y <= BALL_AT_BOTTOM)
     {
+        g_collision_detected = true;
+        g_sound_to_play      = SOUND_WALL;
+
         game_state->ball.position.y = BALL_AT_BOTTOM;
         game_state->ball.velocity.y = -game_state->ball.velocity.y;
     }
@@ -281,6 +309,10 @@ update_and_render_ball(GameState *game_state, f32 last_frame_time_seconds)
 
             game_state->ball.velocity.x = -game_state->ball.velocity.x;
             game_state->ball.velocity.y += game_state->left_paddle.velocity.y;
+
+            g_collision_detected = true;
+
+            g_sound_to_play = SOUND_PADDLE;
         }
         else
         {
@@ -302,11 +334,18 @@ update_and_render_ball(GameState *game_state, f32 last_frame_time_seconds)
 
                 game_state->ball.velocity.x = -game_state->ball.velocity.x;
                 game_state->ball.velocity.y += game_state->right_paddle.velocity.y;
+
+                g_collision_detected = true;
+
+                g_sound_to_play = SOUND_PADDLE;
             }
         }
     }
 
-    render_entity(&game_state->ball, ENTITIES_COLOR);
+    if(game_state->match_started)
+    {
+        render_entity(&game_state->ball, ENTITIES_COLOR);
+    }
 }
 
 INTERNAL void
@@ -503,6 +542,7 @@ game_update_and_render(GameState *game_state, f32 last_frame_time_seconds)
 
 #define BALL_X_SPEED      0.8f
 #define BALL_INIT_Y_SPEED BALL_X_SPEED
+
     if(!game_state->match_started && g_is_key_down[KEY_ENTER])
     {
         game_state->match_started = true;
@@ -525,6 +565,7 @@ game_update_and_render(GameState *game_state, f32 last_frame_time_seconds)
             game_state->ball.velocity.y = BALL_INIT_Y_SPEED;
         }
     }
+
 #undef BALL_X_SPEED
 #undef BALL_INIT_Y_SPEED
 
@@ -537,4 +578,39 @@ game_update_and_render(GameState *game_state, f32 last_frame_time_seconds)
     update_and_render_ball(game_state, last_frame_time_seconds);
 
     render_scoreboard(game_state);
+}
+
+INTERNAL void
+game_send_audio(void)
+{
+    if(g_collision_detected)
+    {
+        switch(g_sound_to_play)
+        {
+            case SOUND_POINT:
+            {
+                g_samples_to_play   = g_point_sound.samples;
+                g_bytes_remaining   = g_point_sound.sample_count * BYTES_PER_SAMPLE;
+                g_next_byte_to_copy = 0;
+
+                break;
+            }
+            case SOUND_WALL:
+            {
+                g_samples_to_play   = g_ball_hit_wall_sound.samples;
+                g_bytes_remaining   = g_ball_hit_wall_sound.sample_count * BYTES_PER_SAMPLE;
+                g_next_byte_to_copy = 0;
+
+                break;
+            }
+            case SOUND_PADDLE:
+            {
+                g_samples_to_play   = g_ball_hit_paddle_sound.samples;
+                g_bytes_remaining   = g_ball_hit_paddle_sound.sample_count * BYTES_PER_SAMPLE;
+                g_next_byte_to_copy = 0;
+
+                break;
+            }
+        }
+    }
 }

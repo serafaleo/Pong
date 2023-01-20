@@ -16,14 +16,14 @@
 // NOTE(leo): Forward declaring the replaced CRT functions.
 void *memset(void *dest_buffer, int value_to_set_per_byte, size_t num_of_bytes_to_set);
 void *memcpy(void *dest_buffer, void const *src_buffer, size_t num_of_bytes_to_copy);
+void *malloc(size_t bytes_to_alloc);
 
 #include "../game_main.c"
 
 // ===========================================================================================
 
-// NOTE(leo): Setting the minimum supported Windows version to 7.
-#define WINVER       0x0601
-#define _WIN32_WINNT WINVER
+// NOTE(leo): Setting the minimum supported Windows version to 10.
+#define _WIN32_WINNT _WIN32_WINNT_WIN10
 
 #define NOGDICAPMASKS    // CC_ *, LC_ *, PC_ *, CP_ *, TC_ *, RC_
 // #define NOVIRTUALKEYCODES // VK_ *
@@ -83,7 +83,7 @@ void *memcpy(void *dest_buffer, void const *src_buffer, size_t num_of_bytes_to_c
 // NOTE(leo): Since it seams that initguid.h is broken for WASAPI, we have to look into the
 // header files to get the GUIDs manually and be able to use the library in plain C.
 
-// NOTE(leo): The following GUIDs were gotten from mmdeviceapi.h or Audioclient.h
+// NOTE(leo): The following GUIDs were gotten from mmdeviceapi.h, Audioclient.h or ksmedia.h.
 
 // BCDE0395-E52F-467C-8E3D-C4579291692E
 INTERNAL const CLSID CLSID_MMDeviceEnumerator = {
@@ -109,11 +109,28 @@ INTERNAL const IID IID_IAudioClient = {
     {0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2}
 };
 
+// 00000003-0000-0010-8000-00AA00389B71
 INTERNAL const IID KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = {
     0x00000003,
     0x0000,
     0x0010,
     {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}
+};
+
+// 7ED4EE07-8E67-4CD4-8C1A-2B7A5987AD42
+INTERNAL const IID IID_IAudioClient3 = {
+    0x7ED4EE07,
+    0x8E67,
+    0x4CD4,
+    {0x8C, 0x1A, 0x2B, 0x7A, 0x59, 0x87, 0xAD, 0x42}
+};
+
+// F294ACFC-3146-4483-A7BF-ADDCA7C260E2
+INTERNAL const IID IID_IAudioRenderClient = {
+    0xF294ACFC,
+    0x3146,
+    0x4483,
+    {0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2}
 };
 
 // ===========================================================================================
@@ -140,6 +157,13 @@ GLOBAL struct
     s32     last_client_height;
 
 } g_win32 = {0};
+
+GLOBAL struct
+{
+    IAudioClient *client;
+    HANDLE        event;
+
+} g_audio;
 
 // ===========================================================================================
 
@@ -374,11 +398,12 @@ win32_window_callback(HWND window_handle, UINT message, WPARAM w_param, LPARAM l
         case WM_PAINT:
         {
             PAINTSTRUCT paint;
-            HDC         device_context = BeginPaint(window_handle, &paint);
-            int         x              = paint.rcPaint.left;
-            int         y              = paint.rcPaint.top;
-            int         w              = paint.rcPaint.right - x;
-            int         h              = paint.rcPaint.bottom - y;
+
+            HDC device_context = BeginPaint(window_handle, &paint);
+            int x              = paint.rcPaint.left;
+            int y              = paint.rcPaint.top;
+            int w              = paint.rcPaint.right - x;
+            int h              = paint.rcPaint.bottom - y;
 
             ASSERT_FUNCTION(PatBlt(device_context, x, y, w, h, BLACKNESS));
             ASSERT_FUNCTION(BitBlt(g_win32.window_dc,
@@ -536,6 +561,107 @@ win32_get_seconds_elapsed(s64 init_tick, s64 end_tick)
     return (f32)delta / g_cpu_ticks_per_second;
 }
 
+INTERNAL DWORD WINAPI
+win32_audio_thread(LPVOID CreateThread_parameter)
+{
+    HRESULT result;
+    if(FAILED(result = IAudioClient_Start(g_audio.client)))
+    {
+        win32_error();
+    }
+
+    IAudioRenderClient *render_client;
+    if(FAILED(result = IAudioClient_GetService(g_audio.client,
+                                               &IID_IAudioRenderClient,
+                                               (void **)&render_client)))
+    {
+        win32_error();
+    }
+
+    u32 buffer_size_frames;
+    if(FAILED(result = IAudioClient_GetBufferSize(g_audio.client, &buffer_size_frames)))
+    {
+        win32_error();
+    }
+
+    while(true)
+    {
+        DWORD state = WaitForSingleObject(g_audio.event, INFINITE);
+        if(state == WAIT_OBJECT_0)
+        {
+            u32 samples_left_in_device;
+            if(FAILED(result = IAudioClient_GetCurrentPadding(g_audio.client,
+                                                              &samples_left_in_device)))
+            {
+                // TODO(leo): Error handling.
+                INVALID_CODE_PATH;
+            }
+
+            u32 samples_to_write = buffer_size_frames - samples_left_in_device;
+
+            u8 *buffer_to_fill;
+            if(FAILED(result = IAudioRenderClient_GetBuffer(render_client,
+                                                            samples_to_write,
+                                                            &buffer_to_fill)))
+            {
+                // TODO(leo): Error handling.
+                INVALID_CODE_PATH;
+            }
+
+            u32 bytes_to_write = samples_to_write * BYTES_PER_SAMPLE;
+
+            OS_PRINTF_LITERAL("Bytes to write: %u32\n", bytes_to_write);
+            OS_PRINTF_LITERAL("Bytes remaining: %u32\n", g_bytes_remaining);
+
+            if(bytes_to_write > g_bytes_remaining)
+            {
+                memcpy(buffer_to_fill,
+                       g_samples_to_play + g_next_byte_to_copy,
+                       g_bytes_remaining);
+
+                memset(buffer_to_fill + g_bytes_remaining,
+                       0,
+                       bytes_to_write - g_bytes_remaining);
+
+                g_bytes_remaining   = 0;
+                g_next_byte_to_copy = 0;
+            }
+            else
+            {
+                memcpy(buffer_to_fill,
+                       g_samples_to_play + g_next_byte_to_copy,
+                       bytes_to_write);
+
+                g_bytes_remaining -= bytes_to_write;
+
+                if(g_bytes_remaining == bytes_to_write)
+                {
+                    g_next_byte_to_copy = 0;
+                }
+                else
+                {
+                    g_next_byte_to_copy += bytes_to_write;
+                }
+            }
+
+            result = IAudioRenderClient_ReleaseBuffer(render_client, samples_to_write, 0);
+            if(FAILED(result))
+            {
+                // TODO(leo): Error handling.
+                INVALID_CODE_PATH;
+            }
+        }
+        else if(WAIT_FAILED)
+        {
+            // TODO(leo): WaitForSingleObject failed.
+            INVALID_CODE_PATH;
+        }
+    }
+
+    // NOTE(leo): Never gets here.
+    return 0;
+}
+
 INTERNAL void
 win32_init_sound_system(void)
 {
@@ -567,12 +693,11 @@ win32_init_sound_system(void)
         win32_error();
     }
 
-    IAudioClient *client;
     result = IMMDevice_Activate(default_output_endpoint,
                                 &IID_IAudioClient,
                                 CLSCTX_ALL,
                                 NULL,
-                                (void **)&client);
+                                (void **)&g_audio.client);
 
     IMMDevice_Release(default_output_endpoint);
 
@@ -581,11 +706,12 @@ win32_init_sound_system(void)
         win32_error();
     }
 
-    WAVEFORMATEXTENSIBLE shared_mode_format;
+    WAVEFORMATEXTENSIBLE shared_mode_format = {0};
+
     shared_mode_format.Format.wFormatTag     = WAVE_FORMAT_EXTENSIBLE;
-    shared_mode_format.Format.nChannels      = 2;
-    shared_mode_format.Format.nSamplesPerSec = 48000;
-    shared_mode_format.Format.wBitsPerSample = 8 * sizeof(f32);
+    shared_mode_format.Format.nChannels      = NUMBER_OF_CHANNELS;
+    shared_mode_format.Format.nSamplesPerSec = SAMPLES_PER_SECOND;
+    shared_mode_format.Format.wBitsPerSample = 8 * (BYTES_PER_SAMPLE / NUMBER_OF_CHANNELS);
 
     shared_mode_format.Format.nBlockAlign =
         (shared_mode_format.Format.nChannels * shared_mode_format.Format.wBitsPerSample) / 8;
@@ -601,17 +727,86 @@ win32_init_sound_system(void)
     shared_mode_format.SubFormat                   = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
 
     WAVEFORMATEX *closest_match;
-    result = IAudioClient_IsFormatSupported(client,
+    result = IAudioClient_IsFormatSupported(g_audio.client,
                                             AUDCLNT_SHAREMODE_SHARED,
                                             &shared_mode_format.Format,
                                             &closest_match);
-    if(result != S_OK)
+
+    if(result != S_OK || closest_match != NULL)
     {
         // TODO(leo): The audio engine (for shared mode stream) does not support one or more
         // of the following format properties: 32-bit floats, 48000 samples per second, 2
         // channels.
         win32_error();
     }
+
+    IAudioClient3 *client3;
+    result =
+        IAudioClient_QueryInterface(g_audio.client, &IID_IAudioClient3, (void **)&client3);
+
+    if(FAILED(result))
+    {
+        win32_error();
+    }
+
+    AudioClientProperties client_properties = {0};
+
+    client_properties.cbSize     = sizeof(client_properties);
+    client_properties.bIsOffload = false;
+    client_properties.eCategory  = AudioCategory_GameMedia;
+    client_properties.Options    = AUDCLNT_STREAMOPTIONS_NONE;
+
+    if(FAILED(result = IAudioClient3_SetClientProperties(client3, &client_properties)))
+    {
+        win32_error();
+    }
+
+    u32 default_period, fundamental_period, min_period, max_period;
+
+    if(FAILED(result = IAudioClient3_GetSharedModeEnginePeriod(client3,
+                                                               &shared_mode_format.Format,
+                                                               &default_period,
+                                                               &fundamental_period,
+                                                               &min_period,
+                                                               &max_period)))
+    {
+        win32_error();
+    }
+
+    result = IAudioClient3_InitializeSharedAudioStream(client3,
+                                                       AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                                       min_period,
+                                                       &shared_mode_format.Format,
+                                                       NULL);
+    if(FAILED(result))
+    {
+        win32_error();
+    }
+
+    // NOTE(leo): From here on we have a low latency audio stream. If you cannot get here then
+    // make sure you have installed "High Definition Audio Device" driver from Microsoft and
+    // not whatever 3rd party driver Windows installs by default.
+    // Instructions from here:
+    // https://docs.microsoft.com/en-us/windows-hardware/drivers/audio/low-latency-audio#measurement-tools
+
+    IAudioClient3_Release(client3);
+
+    g_audio.event = CreateEventA(NULL, false, false, NULL);
+
+    if(g_audio.event == NULL)
+    {
+        win32_error();
+    }
+
+    if(FAILED(result = IAudioClient_SetEventHandle(g_audio.client, g_audio.event)))
+    {
+        win32_error();
+    }
+
+    // NOTE(leo): Creates the audio thread. We don't need to store the HANDLE to the thread
+    // because we don't intent to kill it during the program life time. ExitProcess will kill
+    // everything, we don't need to bother.
+    CreateThread(NULL, 0, win32_audio_thread, NULL, 0, NULL);
 }
 
 void
@@ -636,6 +831,8 @@ WinMainCRTStartup(void)
     f32 target_frame_seconds = 1.0f / refresh_rate;
 
     ASSERT_FUNCTION_COMPARE(timeBeginPeriod(1), ==, TIMERR_NOERROR);
+
+    generate_game_sounds();
 
     GameState game_state;
     game_state_init(&game_state);
@@ -682,6 +879,8 @@ WinMainCRTStartup(void)
             // than this fine_tuning value.
             Sleep((DWORD)(ms_to_sleep - fine_tuning));
         }
+
+        game_send_audio();
 
         ASSERT_FUNCTION(BitBlt(g_win32.window_dc,
                                g_win32.blit_dest_x,
@@ -747,7 +946,7 @@ memset(void *dest_buffer, int value_to_set_per_byte, size_t num_of_bytes_to_set)
         *missing++ = (u8)value_to_set_per_byte;
     }
 
-    return missing;
+    return dest_buffer;
 
 #endif // OPTIMIZATIONS_ON
 }
@@ -789,7 +988,18 @@ memcpy(void *dest_buffer, void const *src_buffer, size_t num_of_bytes_to_copy)
         *missing++ = *remaining++;
     }
 
-    return missing;
+    return dest_buffer;
 
 #endif // OPTIMIZATIONS_ON
+}
+
+void *
+malloc(size_t bytes_to_alloc)
+{
+    if(!bytes_to_alloc)
+    {
+        return NULL;
+    }
+
+    return HeapAlloc(GetProcessHeap(), 0, bytes_to_alloc);
 }

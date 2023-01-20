@@ -29,3 +29,27 @@ round_f32_to_s32_up(f32 to_round)
 {
     return (s32)(to_round + 0.5f);
 }
+
+INTERNAL s32
+round_f32_to_closest_even_s32(f32 to_round)
+{
+    s32 closest_integer = round_f32_to_s32_up(to_round);
+
+    if((closest_integer % 2) == 0)
+    {
+        return closest_integer;
+    }
+    else
+    {
+        f32 decimal_part = to_round - (f32)((s32)to_round);
+
+        if(decimal_part >= 0.5f)
+        {
+            return closest_integer - 1;
+        }
+        else
+        {
+            return closest_integer + 1;
+        }
+    }
+}
