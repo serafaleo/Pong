@@ -880,8 +880,6 @@ WinMainCRTStartup(void)
             Sleep((DWORD)(ms_to_sleep - fine_tuning));
         }
 
-        game_send_audio();
-
         ASSERT_FUNCTION(BitBlt(g_win32.window_dc,
                                g_win32.blit_dest_x,
                                g_win32.blit_dest_y,
@@ -891,6 +889,8 @@ WinMainCRTStartup(void)
                                0,
                                0,
                                SRCCOPY));
+
+        game_send_audio();
 
         last_frame_time_seconds =
             win32_get_seconds_elapsed(frame_begin_tick, win32_get_cpu_tick());
