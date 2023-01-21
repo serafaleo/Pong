@@ -9,6 +9,11 @@
     #pragma clang diagnostic pop
 #endif // DEVELOPMENT
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#include "third_party/pcg-c-basic-0.9/pcg_basic.c"
+#pragma clang diagnostic pop
+
 #include "utils.c"
 
 #ifdef DEVELOPMENT
@@ -112,7 +117,7 @@ GLOBAL b32 g_collision_detected      = false;
 // ===========================================================================================
 
 INTERNAL void
-game_state_init(GameState *game_state)
+game_main(GameState *game_state)
 {
     memset(game_state, 0, sizeof(*game_state));
 
@@ -126,6 +131,8 @@ game_state_init(GameState *game_state)
 
     game_state->ball.width  = BALL_SCALE;
     game_state->ball.height = BALL_SCALE;
+
+    pcg32_srandom_r(&rng, __rdtsc() ^ (u64)game_state, (u64)&memset);
 }
 
 INTERNAL void
@@ -228,7 +235,9 @@ update_and_render_paddles(Entity *left_paddle,
 INTERNAL void
 set_winner(GameState *game_state, Winner winner)
 {
-    memset(&game_state->ball.position, 0, sizeof(game_state->ball.position));
+    game_state->ball.position.x = 0.0f;
+    game_state->ball.position.y = (2.0f * random_f32_0_1()) - 1.0f;
+
     memset(&game_state->ball.velocity, 0, sizeof(game_state->ball.velocity));
 
     game_state->winner = winner;

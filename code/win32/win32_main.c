@@ -835,7 +835,7 @@ WinMainCRTStartup(void)
     generate_game_sounds();
 
     GameState game_state;
-    game_state_init(&game_state);
+    game_main(&game_state);
 
     // NOTE(leo): Setting to an aproximate value for the first frame.
     f32 last_frame_time_seconds = target_frame_seconds;
