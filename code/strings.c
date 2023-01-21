@@ -101,7 +101,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 
             switch(*character)
             {
-                case 'S':
+                case 'S': // String8
                 {
                     String8 string = *va_arg(variable_arguments, String8 *);
                     CHECK_BOUNDS(string.length);
@@ -112,7 +112,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 
                     break;
                 }
-                case 'a':
+                case 'a': // ansi
                 {
                     char *null_term_string = va_arg(variable_arguments, char *);
                     for(; *null_term_string; ++null_term_string)
@@ -123,7 +123,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 
                     break;
                 }
-                case 'w':
+                case 'w': // wide ansi
                 {
                     wchar_t *null_term_wide_string = va_arg(variable_arguments, wchar_t *);
 
@@ -143,7 +143,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 
                     if(*character++ == 's')
                     {
-                        s64 signed_value;
+                        s64 signed_value = 0; // NOTE(leo): Initialized just to shup up Clang.
 
                         switch(*character)
                         {
@@ -156,7 +156,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 #endif // __clang__
                                 break;
                             }
-                            case '1':
+                            case '1': // 16
                             {
                                 character++;
 #ifdef __clang__
@@ -166,13 +166,13 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 #endif // __clang__
                                 break;
                             }
-                            case '3':
+                            case '3': // 32
                             {
                                 character++;
                                 signed_value = va_arg(variable_arguments, s32);
                                 break;
                             }
-                            case '6':
+                            case '6': // 64
                             {
                                 character++;
                                 signed_value = va_arg(variable_arguments, s64);
@@ -207,7 +207,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 #endif // __clang__
                                 break;
                             }
-                            case '1':
+                            case '1': // 16
                             {
                                 character++;
 #ifdef __clang__
@@ -217,13 +217,13 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 #endif // __clang__
                                 break;
                             }
-                            case '3':
+                            case '3': // 32
                             {
                                 character++;
                                 unsigned_value = va_arg(variable_arguments, u32);
                                 break;
                             }
-                            case '6':
+                            case '6': // 64
                             {
                                 character++;
                                 unsigned_value = va_arg(variable_arguments, u64);
@@ -327,7 +327,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
                 case 'b':
                 {
                     character++;
-                    b32 bool_value;
+                    b32 bool_value = 0; // NOTE(leo): Initialized just to shut up Clang.
                     switch(*character)
                     {
                         case '8':
@@ -339,7 +339,7 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 #endif // __clang__
                             break;
                         }
-                        case '3':
+                        case '3': // 32
                         {
                             bool_value = va_arg(variable_arguments, b32);
                             character++;

@@ -135,9 +135,7 @@ INTERNAL const IID IID_IAudioRenderClient = {
 
 // ===========================================================================================
 
-#ifdef DEVELOPMENT
-    #include "win32_os.c"
-#endif // DEVELOPMENT
+#include "win32_os.c"
 
 #define WIN32_ERROR_LITERAL(literal_error_format, ...)                                       \
     win32_message(MSG_ERROR, STRING8_LITERAL(literal_error_format), __VA_ARGS__)
@@ -730,8 +728,10 @@ win32_audio_thread(LPVOID CreateThread_parameter)
 
             u32 bytes_to_write = samples_to_write * BYTES_PER_SAMPLE;
 
+#ifdef DEVELOPMENT
             OS_PRINTF_LITERAL("Bytes to write: %u32\n", bytes_to_write);
             OS_PRINTF_LITERAL("Bytes remaining: %u32\n", g_bytes_remaining);
+#endif // DEVELOPMENT
 
             if(bytes_to_write > g_bytes_remaining)
             {
@@ -1001,9 +1001,11 @@ WinMainCRTStartup(void)
             DispatchMessageA(&msg);
         }
 
+#ifdef DEVELOPMENT
         OS_PRINTF_LITERAL("Frame time (ms): %.2f (target: %.2f)\n",
                           last_frame_time_seconds * 1000.0f,
                           target_frame_seconds * 1000.0f);
+#endif // DEVELOPMENT
 
         game_update_and_render(&game_state, last_frame_time_seconds);
 
@@ -1012,7 +1014,9 @@ WinMainCRTStartup(void)
 
         s32 ms_to_sleep = (s32)((target_frame_seconds - frame_work_seconds) * 1000.0f);
 
+#ifdef DEVELOPMENT
         OS_PRINTF_LITERAL("Frame work (ms): %.2f\n", frame_work_seconds * 1000.0f);
+#endif // DEVELOPMENT
 
         s32 fine_tuning = 1;
         if(ms_to_sleep > fine_tuning)
@@ -1026,15 +1030,19 @@ WinMainCRTStartup(void)
             Sleep((DWORD)(ms_to_sleep - fine_tuning));
         }
 
-        ASSERT_FUNCTION(BitBlt(g_win32.window_dc,
-                               g_win32.blit_dest_x,
-                               g_win32.blit_dest_y,
-                               g_back_buffer.width,
-                               g_back_buffer.height,
-                               g_win32.bitmap_dc,
-                               0,
-                               0,
-                               SRCCOPY));
+        if(BitBlt(g_win32.window_dc,
+                  g_win32.blit_dest_x,
+                  g_win32.blit_dest_y,
+                  g_back_buffer.width,
+                  g_back_buffer.height,
+                  g_win32.bitmap_dc,
+                  0,
+                  0,
+                  SRCCOPY)
+           == 0)
+        {
+            WIN32_ERROR_LITERAL("Failed to copy the backbuffer to the program's window.");
+        }
 
         game_send_audio();
 

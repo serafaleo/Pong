@@ -2,24 +2,24 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
-#ifdef DEVELOPMENT
-    #pragma clang diagnostic push
-    #pragma clang diagnostic ignored "-Wsign-conversion"
-    #include "third_party/ryu/d2fixed.c"
-    #pragma clang diagnostic pop
-#endif // DEVELOPMENT
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wsign-conversion"
+
+#include "third_party/ryu/d2fixed.c"
+
+#pragma clang diagnostic pop
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshorten-64-to-32"
+
 #include "third_party/pcg-c-basic-0.9/pcg_basic.c"
+
 #pragma clang diagnostic pop
 
 #include "utils.c"
 
-#ifdef DEVELOPMENT
-    #include "strings.c"
-    #include "os.c"
-#endif // DEVELOPMENT
+#include "strings.c"
+#include "os.c"
 
 #include "math.c"
 #include "software_renderer.c"
