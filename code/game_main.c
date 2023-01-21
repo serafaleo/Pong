@@ -117,6 +117,19 @@ GLOBAL b32 g_collision_detected      = false;
 // ===========================================================================================
 
 INTERNAL void
+set_random_ball_y_position(GameState *game_state)
+{
+    game_state->ball.position.y = random_f32_0_1();
+
+    // NOTE(leo): We need to add (if position is negative) or subtract (if position is
+    // positive) the ball scale to avoid starting with the ball already at the wall, which
+    // would trigger the collision detector and play sound.
+    game_state->ball.position.y = pcg32_boundedrand_r(&g_rng, 2)
+                                    ? game_state->ball.position.y - BALL_SCALE
+                                    : -game_state->ball.position.y + BALL_SCALE;
+}
+
+INTERNAL void
 game_main(GameState *game_state)
 {
     memset(game_state, 0, sizeof(*game_state));
@@ -132,7 +145,9 @@ game_main(GameState *game_state)
     game_state->ball.width  = BALL_SCALE;
     game_state->ball.height = BALL_SCALE;
 
-    pcg32_srandom_r(&rng, __rdtsc() ^ (u64)game_state, (u64)&memset);
+    pcg32_srandom_r(&g_rng, __rdtsc() ^ (u64)game_state, (u64)&memset);
+
+    set_random_ball_y_position(game_state);
 }
 
 INTERNAL void
@@ -235,21 +250,24 @@ update_and_render_paddles(Entity *left_paddle,
 INTERNAL void
 set_winner(GameState *game_state, Winner winner)
 {
-    game_state->ball.position.x = 0.0f;
-    game_state->ball.position.y = (2.0f * random_f32_0_1()) - 1.0f;
-
     memset(&game_state->ball.velocity, 0, sizeof(game_state->ball.velocity));
+
+    set_random_ball_y_position(game_state);
 
     game_state->winner = winner;
 
+#define BALL_RESTART_POSITION_X_PADDING 0.07f;
     if(winner == WINNER_LEFT)
     {
+        game_state->ball.position.x = -BALL_RESTART_POSITION_X_PADDING;
         game_state->left_points++;
     }
     else if(winner == WINNER_RIGHT)
     {
+        game_state->ball.position.x = BALL_RESTART_POSITION_X_PADDING;
         game_state->right_points++;
     }
+#undef BALL_RESTART_POSITION_X_PADDING
 
     game_state->match_started = false;
 }
@@ -549,34 +567,39 @@ game_update_and_render(GameState *game_state, f32 last_frame_time_seconds)
     // and rendering with the actual color.
     clear_back_buffer(BACKGROUND_COLOR);
 
-#define BALL_X_SPEED      0.8f
-#define BALL_INIT_Y_SPEED BALL_X_SPEED
-
     if(!game_state->match_started && g_is_key_down[KEY_ENTER])
     {
         game_state->match_started = true;
 
-        if(game_state->winner == WINNER_LEFT)
+        game_state->ball.velocity.x = (0.65f * random_f32_0_1()) + 0.65f; // 0.65 <= x < 1.3
+
+#define SEN_75DEG 0.96592582628906828675f
+
+        // NOTE(leo): Generating a velocity vector that is, at maximum, 75 degrees from the X
+        // axis.
+
+        game_state->ball.velocity.y =
+            game_state->ball.velocity.x * SEN_75DEG * random_f32_0_1();
+
+#undef SEN_75DEG
+
+        // TODO(leo): Decide whether the ball goes up or down randomly.
+        game_state->ball.velocity.y = pcg32_boundedrand_r(&g_rng, 2)
+                                        ? game_state->ball.velocity.y
+                                        : -game_state->ball.velocity.y;
+
+        if(game_state->left_points == 0 && game_state->right_points == 0)
         {
-            game_state->ball.velocity.x = BALL_X_SPEED;
-            game_state->ball.velocity.y =
-                game_state->left_points % 2 == 0 ? BALL_INIT_Y_SPEED : -BALL_INIT_Y_SPEED;
+            // TODO(leo): Decides which player starts with the ball ramdomly.
+            game_state->ball.velocity.x = pcg32_boundedrand_r(&g_rng, 2)
+                                            ? game_state->ball.velocity.x
+                                            : -game_state->ball.velocity.x;
         }
         else if(game_state->winner == WINNER_RIGHT)
         {
-            game_state->ball.velocity.x = -BALL_X_SPEED;
-            game_state->ball.velocity.y =
-                game_state->right_points % 2 == 0 ? BALL_INIT_Y_SPEED : -BALL_INIT_Y_SPEED;
-        }
-        else
-        {
-            game_state->ball.velocity.x = BALL_X_SPEED;
-            game_state->ball.velocity.y = BALL_INIT_Y_SPEED;
+            game_state->ball.velocity.x = -game_state->ball.velocity.x;
         }
     }
-
-#undef BALL_X_SPEED
-#undef BALL_INIT_Y_SPEED
 
     render_middle_line();
 

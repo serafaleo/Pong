@@ -4,7 +4,7 @@ typedef struct
 
 } v2;
 
-GLOBAL pcg32_random_t rng;
+GLOBAL pcg32_random_t g_rng;
 
 // ===========================================================================================
 
@@ -75,5 +75,5 @@ ldexp(f64 x, s32 exp)
 INTERNAL f32
 random_f32_0_1(void)
 {
-    return (f32)ldexp(pcg32_random_r(&rng), -32);
+    return (f32)ldexp(pcg32_random_r(&g_rng), -32);
 }
