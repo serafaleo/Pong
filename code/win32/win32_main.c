@@ -46,7 +46,7 @@ void *malloc(size_t bytes_to_alloc);
 #define NOKERNEL         // All KERNEL defines and routines
 // #define NOUSER            // All USER defines and routines
 #define NONLS            // All NLS defines and routines
-#define NOMB             // MB_ *and MessageBox()
+// #define NOMB             // MB_ *and MessageBox()
 #define NOMEMMGR         // GMEM_ *, LMEM_ *, GHND, LHND, associated routines
 #define NOMETAFILE       // typedef METAFILEPICT
 #define NOMINMAX         // Macros min(a, b) and max(a, b)
@@ -139,6 +139,25 @@ INTERNAL const IID IID_IAudioRenderClient = {
     #include "win32_os.c"
 #endif // DEVELOPMENT
 
+#define WIN32_ERROR_LITERAL(literal_error_format, ...)                                       \
+    win32_message(MSG_ERROR, STRING8_LITERAL(literal_error_format), __VA_ARGS__)
+
+#define WIN32_WARNING_LITERAL(literal_warning_format, ...)                                   \
+    win32_message(MSG_WARNING, STRING8_LITERAL(literal_warning_format), __VA_ARGS__)
+
+#define HRESULT_USER_STRING                                                                  \
+    "\nPlese, create a new issue at \"https://github.com/serafaleo/Pong/issues\" with a "    \
+    "print screen of this message box so that we can figure out what happened and fix it."
+
+// ===========================================================================================
+
+typedef enum
+{
+    MSG_ERROR,
+    MSG_WARNING
+
+} MessageType;
+
 GLOBAL f32 g_cpu_ticks_per_second;
 
 // NOTE(leo): This GLOBAL is only global because the way Windows handle window messages
@@ -165,6 +184,8 @@ GLOBAL struct
 
 } g_audio;
 
+GLOBAL DWORD g_last_error;
+
 // ===========================================================================================
 
 INTERNAL void
@@ -177,9 +198,60 @@ win32_exit(UINT exit_code)
 }
 
 INTERNAL void
-win32_error(void)
+win32_message(MessageType type, String8 message_format, ...)
 {
-    win32_exit(1);
+    GET_formated_AND_formated_length_FROM_FORMAT_STRING8(message_format);
+
+    DWORD current_error = GetLastError();
+
+    if(current_error != g_last_error)
+    {
+        g_last_error = current_error;
+
+#define ERROR_SEARCH_TIP                                                                     \
+    "\nPlese, search for this error code at "                                                \
+    "\"https://learn.microsoft.com/en-us/windows/win32/debug/"                               \
+    "system-error-codes#system-error-codes\". See if that is something you can do to fix "   \
+    "it. If not, please, create a new issue at "                                             \
+    "\"https://github.com/serafaleo/Pong/issues\" with a print screen of this message box "  \
+    "so that we can figure out what happened and fix it."
+
+        formated_length +=
+            STR8_FORMAT_LITERAL(&formated[formated_length],
+                                STATIC_ARRAY_LENGTH(formated) - formated_length,
+                                "\n\nSystem Error Code: %u32" ERROR_SEARCH_TIP,
+                                current_error);
+#undef ERROR_SEARCH_TIP
+    }
+
+    switch(type)
+    {
+        case MSG_ERROR:
+        {
+            OS_PRINT_LITERAL("ERROR: ");
+            os_print((String8) {formated, formated_length});
+            OS_PRINT_LITERAL("\n");
+            MessageBoxExA(NULL, formated, PROGRAM_NAME ": ERROR", MB_OK | MB_ICONERROR, 0);
+            // NOTE(leo): Just so that we can browse the call stack and debug.
+            INVALID_CODE_PATH;
+            win32_exit(1);
+            break;
+        }
+        case MSG_WARNING:
+        {
+            OS_PRINT_LITERAL("WARNING: ");
+            os_print((String8) {formated, formated_length});
+            OS_PRINT_LITERAL("\n");
+            MessageBoxExA(NULL,
+                          formated,
+                          PROGRAM_NAME ": WARNING",
+                          MB_OK | MB_ICONWARNING,
+                          0);
+            // NOTE(leo): Just so that we can browse the call stack and debug.
+            INVALID_CODE_PATH;
+            break;
+        }
+    }
 }
 
 INTERNAL void
@@ -208,29 +280,40 @@ win32_resize_graphics(s32 new_width, s32 new_height)
                                                0);
         if(!temp_bitmap)
         {
-            win32_error();
+            WIN32_ERROR_LITERAL("Failed to create temporary bitmap.");
         }
 
         temp_bitmap_dc = CreateCompatibleDC(g_win32.window_dc);
 
         if(!temp_bitmap_dc)
         {
-            win32_error();
+            WIN32_ERROR_LITERAL("Failed to create temporary device context for the bitmap.");
         }
 
         if(!SelectObject(temp_bitmap_dc, temp_bitmap))
         {
-            win32_error();
+            WIN32_ERROR_LITERAL(
+                "Failed to select the temporary bitmap into its respective device context.");
         }
 
         if(g_win32.bitmap_handle)
         {
-            ASSERT_FUNCTION(DeleteObject(g_win32.bitmap_handle));
+            if(DeleteObject(g_win32.bitmap_handle) == 0)
+            {
+                WIN32_WARNING_LITERAL(
+                    "Failed to delete the old bitmap. If you continue to "
+                    "resize the window, the system WILL run out of memory and crash.");
+            }
         }
 
         if(g_win32.bitmap_dc)
         {
-            ASSERT_FUNCTION(DeleteDC(g_win32.bitmap_dc));
+            if(DeleteDC(g_win32.bitmap_dc) == 0)
+            {
+                WIN32_WARNING_LITERAL(
+                    "Failed to delete the old bitmap's device context. If you continue to "
+                    "resize the window, the system WILL run out of memory and crash.");
+            }
         }
 
         g_win32.bitmap_handle = temp_bitmap;
@@ -278,6 +361,15 @@ win32_toggle_fullscreen(void)
         {
             g_win32.windowed_rect = current_rect;
         }
+        else
+        {
+            WIN32_WARNING_LITERAL("Failed to move window to toggle fullscreen.");
+        }
+    }
+    else
+    {
+        WIN32_WARNING_LITERAL(
+            "Failed to retrieve the current program's window settings to toggle fullscreen.");
     }
 }
 
@@ -405,16 +497,26 @@ win32_window_callback(HWND window_handle, UINT message, WPARAM w_param, LPARAM l
             int w              = paint.rcPaint.right - x;
             int h              = paint.rcPaint.bottom - y;
 
-            ASSERT_FUNCTION(PatBlt(device_context, x, y, w, h, BLACKNESS));
-            ASSERT_FUNCTION(BitBlt(g_win32.window_dc,
-                                   g_win32.blit_dest_x,
-                                   g_win32.blit_dest_y,
-                                   g_back_buffer.width,
-                                   g_back_buffer.height,
-                                   g_win32.bitmap_dc,
-                                   0,
-                                   0,
-                                   SRCCOPY));
+            if(PatBlt(device_context, x, y, w, h, BLACKNESS) == 0)
+            {
+                WIN32_ERROR_LITERAL("Failed to set windows's background to black after "
+                                    "WM_PAINT message received.");
+            }
+
+            if(BitBlt(g_win32.window_dc,
+                      g_win32.blit_dest_x,
+                      g_win32.blit_dest_y,
+                      g_back_buffer.width,
+                      g_back_buffer.height,
+                      g_win32.bitmap_dc,
+                      0,
+                      0,
+                      SRCCOPY)
+               == 0)
+            {
+                WIN32_ERROR_LITERAL(
+                    "Failed to copy new bitmap to window after WM_PAINT message received.");
+            }
 
             EndPaint(window_handle, &paint);
             break;
@@ -436,7 +538,7 @@ win32_create_window(void)
 
     if(!executable_instance)
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to get program's executable instance.");
     }
 
     WNDCLASSEXA window_class = {0};
@@ -451,7 +553,7 @@ win32_create_window(void)
 
     if(!RegisterClassExA(&window_class))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to register the program's window class.");
     }
 
     // NOTE(leo): Width and height of the primary screen;
@@ -460,7 +562,7 @@ win32_create_window(void)
 
     if(!screen_width_px || !screen_height_px)
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to retrieve screen width and/or screen height.");
     }
 
     s32 windowed_init_width  = 1280;
@@ -478,12 +580,11 @@ win32_create_window(void)
     g_win32.fullscreen_rect.bottom = screen_height_px;
 
     DWORD style = WS_OVERLAPPEDWINDOW;
-    // DWORD style = WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX;
 
     if(!AdjustWindowRectEx(&g_win32.windowed_rect, style, false, 0)
        || !AdjustWindowRectEx(&g_win32.fullscreen_rect, style, false, 0))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to define program's window position and/or dimensions.");
     }
 
 #ifdef DEVELOPMENT
@@ -512,14 +613,14 @@ win32_create_window(void)
                                             NULL);
     if(!g_win32.window_handle)
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to create program's window.");
     }
 
     g_win32.window_dc = GetDC(g_win32.window_handle);
 
     if(!g_win32.window_dc)
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to get program's window device context.");
     }
 }
 
@@ -532,13 +633,14 @@ win32_get_monitor_refresh_rate(HWND window_handle)
     monitor_info.cbSize = sizeof(monitor_info);
     if(!GetMonitorInfoA(window_monitor, (MONITORINFO *)&monitor_info))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to get program's window's current monitor info.");
     }
 
     DEVMODEA display_mode;
     if(!EnumDisplaySettingsA(monitor_info.szDevice, ENUM_CURRENT_SETTINGS, &display_mode))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL(
+            "Failed to enumerate program's window's current monitor settings.");
     }
 
     return (f32)display_mode.dmDisplayFrequency;
@@ -548,8 +650,13 @@ INTERNAL s64
 win32_get_cpu_tick(void)
 {
     LARGE_INTEGER li_counter;
-    // NOTE(leo): According to MSDN, will never fail on Windows XP or later. We only ASSERT.
-    ASSERT_FUNCTION(QueryPerformanceCounter(&li_counter));
+
+    if(!QueryPerformanceCounter(&li_counter))
+    {
+        // NOTE(leo): According to MSDN, will never fail on Windows XP or later. We only
+        // ASSERT.
+        WIN32_ERROR_LITERAL("Failed to get performance counter. The MSDN docs lied to us!");
+    }
     return li_counter.QuadPart;
 }
 
@@ -561,13 +668,20 @@ win32_get_seconds_elapsed(s64 init_tick, s64 end_tick)
     return (f32)delta / g_cpu_ticks_per_second;
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
+
 INTERNAL DWORD WINAPI
 win32_audio_thread(LPVOID CreateThread_parameter)
+
+#pragma clang diagnostic pop
 {
     HRESULT result;
     if(FAILED(result = IAudioClient_Start(g_audio.client)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to start the audio client.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     IAudioRenderClient *render_client;
@@ -575,13 +689,17 @@ win32_audio_thread(LPVOID CreateThread_parameter)
                                                &IID_IAudioRenderClient,
                                                (void **)&render_client)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to retrieve an audio render client.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     u32 buffer_size_frames;
     if(FAILED(result = IAudioClient_GetBufferSize(g_audio.client, &buffer_size_frames)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to get audio client buffer size.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     while(true)
@@ -593,8 +711,9 @@ win32_audio_thread(LPVOID CreateThread_parameter)
             if(FAILED(result = IAudioClient_GetCurrentPadding(g_audio.client,
                                                               &samples_left_in_device)))
             {
-                // TODO(leo): Error handling.
-                INVALID_CODE_PATH;
+                WIN32_ERROR_LITERAL("Failed to get current audio buffer padding.\n\nHRESULT: "
+                                    "%Xs32" HRESULT_USER_STRING,
+                                    result);
             }
 
             u32 samples_to_write = buffer_size_frames - samples_left_in_device;
@@ -604,8 +723,9 @@ win32_audio_thread(LPVOID CreateThread_parameter)
                                                             samples_to_write,
                                                             &buffer_to_fill)))
             {
-                // TODO(leo): Error handling.
-                INVALID_CODE_PATH;
+                WIN32_ERROR_LITERAL("Failed to get audio buffer.\n\nHRESULT: "
+                                    "%Xs32" HRESULT_USER_STRING,
+                                    result);
             }
 
             u32 bytes_to_write = samples_to_write * BYTES_PER_SAMPLE;
@@ -647,14 +767,14 @@ win32_audio_thread(LPVOID CreateThread_parameter)
             result = IAudioRenderClient_ReleaseBuffer(render_client, samples_to_write, 0);
             if(FAILED(result))
             {
-                // TODO(leo): Error handling.
-                INVALID_CODE_PATH;
+                WIN32_ERROR_LITERAL("Failed to release audio buffer.\n\nHRESULT: "
+                                    "%Xs32" HRESULT_USER_STRING,
+                                    result);
             }
         }
         else if(WAIT_FAILED)
         {
-            // TODO(leo): WaitForSingleObject failed.
-            INVALID_CODE_PATH;
+            WIN32_ERROR_LITERAL("WaitForSingleObject has failed in the audio thread.");
         }
     }
 
@@ -668,7 +788,9 @@ win32_init_sound_system(void)
     HRESULT result;
     if(FAILED(result = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to initialize Component Object Model.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     IMMDeviceEnumerator *device_enumerator;
@@ -678,7 +800,9 @@ win32_init_sound_system(void)
                                         &IID_IMMDeviceEnumerator,
                                         (void **)&device_enumerator)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL(
+            "Failed to create IMMDeviceEnumerator.\n\nHRESULT: %Xs32" HRESULT_USER_STRING,
+            result);
     }
 
     IMMDevice *default_output_endpoint;
@@ -690,7 +814,9 @@ win32_init_sound_system(void)
 
     if(FAILED(result))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL(
+            "Failed to retrieve default IMMDevice.\n\nHRESULT: %Xs32" HRESULT_USER_STRING,
+            result);
     }
 
     result = IMMDevice_Activate(default_output_endpoint,
@@ -703,7 +829,9 @@ win32_init_sound_system(void)
 
     if(FAILED(result))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL(
+            "Failed to activate default IMMDevice.\n\nHRESULT: %Xs32" HRESULT_USER_STRING,
+            result);
     }
 
     WAVEFORMATEXTENSIBLE shared_mode_format = {0};
@@ -734,10 +862,11 @@ win32_init_sound_system(void)
 
     if(result != S_OK || closest_match != NULL)
     {
-        // TODO(leo): The audio engine (for shared mode stream) does not support one or more
-        // of the following format properties: 32-bit floats, 48000 samples per second, 2
-        // channels.
-        win32_error();
+        WIN32_ERROR_LITERAL(
+            "One or more of the following audio format properties is not supported "
+            "by the audio engine: 32-bit floats, 48000 samples per second, 2 "
+            "channels.\n\nHRESULT: %Xs32" HRESULT_USER_STRING,
+            result);
     }
 
     IAudioClient3 *client3;
@@ -746,7 +875,9 @@ win32_init_sound_system(void)
 
     if(FAILED(result))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to query an IAudioClient3 interface.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     AudioClientProperties client_properties = {0};
@@ -758,7 +889,9 @@ win32_init_sound_system(void)
 
     if(FAILED(result = IAudioClient3_SetClientProperties(client3, &client_properties)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to audio client properties.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     u32 default_period, fundamental_period, min_period, max_period;
@@ -770,7 +903,10 @@ win32_init_sound_system(void)
                                                                &min_period,
                                                                &max_period)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL(
+            "Failed to retrieve shared mode audio engine periods.\n\nHRESULT: "
+            "%Xs32" HRESULT_USER_STRING,
+            result);
     }
 
     result = IAudioClient3_InitializeSharedAudioStream(client3,
@@ -780,7 +916,9 @@ win32_init_sound_system(void)
                                                        NULL);
     if(FAILED(result))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to initialize shared mode audio stream.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     // NOTE(leo): From here on we have a low latency audio stream. If you cannot get here then
@@ -795,23 +933,31 @@ win32_init_sound_system(void)
 
     if(g_audio.event == NULL)
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to create system event for the audio engine.");
     }
 
     if(FAILED(result = IAudioClient_SetEventHandle(g_audio.client, g_audio.event)))
     {
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to set event handle for the audio client.\n\nHRESULT: "
+                            "%Xs32" HRESULT_USER_STRING,
+                            result);
     }
 
     // NOTE(leo): Creates the audio thread. We don't need to store the HANDLE to the thread
     // because we don't intent to kill it during the program life time. ExitProcess will kill
     // everything, we don't need to bother.
-    CreateThread(NULL, 0, win32_audio_thread, NULL, 0, NULL);
+    if(CreateThread(NULL, 0, win32_audio_thread, NULL, 0, NULL) == NULL)
+    {
+        WIN32_ERROR_LITERAL("Failed to create audio thread.");
+    }
 }
 
 void
 WinMainCRTStartup(void)
 {
+    SetLastError(0);
+    g_last_error = GetLastError();
+
     // NOTE(leo): This is to prevent error mode dialogs from hanging the application.
     SetErrorMode(SEM_FAILCRITICALERRORS);
 
@@ -819,7 +965,7 @@ WinMainCRTStartup(void)
     if(!QueryPerformanceFrequency(&li_frequency))
     {
         // NOTE(leo): According to MSDN, will never fail on Windows XP or later.
-        win32_error();
+        WIN32_ERROR_LITERAL("Failed to get cpu ticks per second. The MSDN docs lied to us!");
     }
 
     g_cpu_ticks_per_second = (f32)li_frequency.QuadPart;

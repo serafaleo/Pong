@@ -17,10 +17,6 @@ INTERNAL void os_print(String8 to_print);
 INTERNAL void
 os_printf(String8 format, ...)
 {
-    va_list arguments;
-    va_start(arguments, format);
-    char formated[1024];
-    u32  length = str8_format_va(formated, STATIC_ARRAY_LENGTH(formated), format, arguments);
-    va_end(arguments);
-    os_print((String8) {formated, length});
+    GET_formated_AND_formated_length_FROM_FORMAT_STRING8(format);
+    os_print((String8) {formated, formated_length});
 }

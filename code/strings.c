@@ -1,4 +1,28 @@
+// NOTE(leo): In case that 'formated' buffer is not large enough for the result string, when
+// ASSERTIONS_ON is defined, an INVALID_CODE_PATH will be triggered, making us know that we
+// need to increase its size. When ASSERTIONS_ON is not defined, the str8_format_va will
+// return the number of characters written to the point it realized that there were not enough
+// space. Then we will print this amount of characters anyway.
+
+// clang-format off
+#define GET_formated_AND_formated_length_FROM_FORMAT_STRING8(format_string8)                 \
+    va_list variable_arguments;                                                              \
+    va_start(variable_arguments, format_string8);                                            \
+    char formated[1024];                                                                     \
+    u32  formated_length = str8_format_va(formated,                                          \
+                                          STATIC_ARRAY_LENGTH(formated),                     \
+                                          format_string8,                                    \
+                                          variable_arguments);                               \
+    va_end(variable_arguments);
+// clang-format on
+
 #define STRING8_LITERAL(literal) ((String8) {literal, STATIC_ARRAY_LENGTH(literal) - 1})
+
+#define STR8_FORMAT_LITERAL(result_buffer, result_buffer_capacity, literal_format, ...)      \
+    str8_format(result_buffer,                                                               \
+                result_buffer_capacity,                                                      \
+                STRING8_LITERAL(literal_format),                                             \
+                __VA_ARGS__)
 
 // ===========================================================================================
 
@@ -361,4 +385,14 @@ str8_format_va(char *result, u64 result_capacity, String8 format, va_list variab
 end:
     result[chars_written] = '\0';
     return chars_written;
+}
+
+INTERNAL u32
+str8_format(char *result, u64 result_capacity, String8 format, ...)
+{
+    va_list variable_arguments;
+    va_start(variable_arguments, format);
+    u32 formated_length = str8_format_va(result, result_capacity, format, variable_arguments);
+    va_end(variable_arguments);
+    return formated_length;
 }
