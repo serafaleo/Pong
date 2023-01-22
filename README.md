@@ -22,6 +22,8 @@ Once you've installed them, open a terminal window at the `code` directory. You 
 
 The slow build has no optimizations at all and comes with debug information so that you can step into the functions in a debugger. The fast build also comes with debug information but uses `-O3` optimization flag, which is the highest, and so there may be harder to step through the code. The release build has maximum optimizations, no debug information, and starts in a fullscreen window.
 
+After you ran any of the commands, a `build` directory containing the executable will be created at the root of the project, alongside `code`.
+
 ## Download
 You can download a precompiled release build in the Releases section of this repository. Here's the link: https://github.com/serafaleo/Pong/releases/tag/release
 
