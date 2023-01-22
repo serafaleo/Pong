@@ -976,7 +976,12 @@ WinMainCRTStartup(void)
     f32 refresh_rate         = win32_get_monitor_refresh_rate(g_win32.window_handle);
     f32 target_frame_seconds = 1.0f / refresh_rate;
 
-    ASSERT_FUNCTION_COMPARE(timeBeginPeriod(1), ==, TIMERR_NOERROR);
+    if(timeBeginPeriod(1) == TIMERR_NOCANDO)
+    {
+        WIN32_WARNING_LITERAL(
+            "Failed to set the OS scheduler resolution to 1ms. You may encounter issues "
+            "while playing the game, like screen tearing for example.");
+    }
 
     generate_game_sounds();
 
