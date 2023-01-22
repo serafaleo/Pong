@@ -144,7 +144,7 @@ INTERNAL const IID IID_IAudioRenderClient = {
     win32_message(MSG_WARNING, STRING8_LITERAL(literal_warning_format), __VA_ARGS__)
 
 #define HRESULT_USER_STRING                                                                  \
-    "\nPlese, create a new issue at \"https://github.com/serafaleo/Pong/issues\" with a "    \
+    "\nPlease, create a new issue at \"https://github.com/serafaleo/Pong/issues\" with a "    \
     "print screen of this message box so that we can figure out what happened and fix it."
 
 // ===========================================================================================
@@ -207,7 +207,7 @@ win32_message(MessageType type, String8 message_format, ...)
         g_last_error = current_error;
 
 #define ERROR_SEARCH_TIP                                                                     \
-    "\nPlese, search for this error code at "                                                \
+    "\nPlease, search for this error code at "                                                \
     "\"https://learn.microsoft.com/en-us/windows/win32/debug/"                               \
     "system-error-codes#system-error-codes\". See if that is something you can do to fix "   \
     "it. If not, please, create a new issue at "                                             \
