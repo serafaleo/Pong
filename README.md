@@ -24,6 +24,13 @@ The slow build has no optimizations at all and comes with debug information so t
 
 After you ran any of the commands, a `build` directory containing the executable will be created at the root of the project, alongside `code`.
 
+## How to play
+- Press `ENTER` to start the match/round;
+- `W` and `S` controls the left paddle;
+- `Up` and `Down` arrows controls the right paddle;
+- `F11` or `Alt+ENTER` toggles fullscreen;
+- `Alt+F4` or `ESC` quits the program.
+
 ## Download
 You can download a precompiled release build in the Releases section of this repository. Here's the link: https://github.com/serafaleo/Pong/releases/tag/release
 
