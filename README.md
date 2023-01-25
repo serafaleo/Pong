@@ -32,6 +32,6 @@ After you ran any of the commands, a `build` directory containing the executable
 - `Alt+F4` or `ESC` quits the program.
 
 ## Download
-You can download a precompiled release build in the Releases section of this repository. Here's the link: https://github.com/serafaleo/Pong/releases/tag/release
+You can download a precompiled release build in the Releases section of this repository. Here's the link: https://github.com/serafaleo/Pong/releases
 
 If when you try to run the executable you see a warning message asking whether you really want to open it or not, just ignore it and open. It's just Microsoft wanting me to pay them to make the executable trustworthy.
