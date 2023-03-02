@@ -1,4 +1,5 @@
 # Pong
+![image](https://user-images.githubusercontent.com/122756045/222469135-4056483a-d0dd-4827-9b31-f73bc76b2a3b.png)
 A Pong clone written from scratch in C. By scratch I mean: it only uses the Windows APIs and two third party libraries. The C standard library is neither used nor linked in the executable. Functions from it, like `printf`, `memset`, `memcpy`, etc. I've implemented myself. This makes the executable much smaller.
 
 The two third party libraries used are:
